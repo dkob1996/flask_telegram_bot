@@ -81,16 +81,16 @@ def post_to_chat(encoded_params):
     """
     Отправляет сообщение в указанный чат или топик.
     """
+    # Если Telegram делает GET-запрос, игнорируем его
+    if request.method == "GET":
+        logger.info(f"⚠️ Игнорируем GET-запрос на /post/{chat_id}/{topic_id}")
+        return jsonify({"error": "Method Not Allowed"}), 405
+
     # Декодируем параметры
     chat_id, topic_id = decode_params(encoded_params)
     if not chat_id:
         logger.warning(f"⚠️ Ошибка декодирования: некорректные параметры ({encoded_params})")
         return jsonify({"error": "Invalid parameters"}), 400
-
-    # Если Telegram делает GET-запрос, игнорируем его
-    if request.method == "GET":
-        logger.info(f"⚠️ Игнорируем GET-запрос на /post/{chat_id}/{topic_id}")
-        return jsonify({"error": "Method Not Allowed"}), 405
 
     data = request.get_json()
     if not data:
@@ -138,16 +138,16 @@ def edit_message(encoded_params, message_id):
     """
     Редактирует сообщение в указанном чате или топике.
     """
+    # Если Telegram делает GET-запрос, игнорируем его
+    if request.method == "GET":
+        logger.info(f"⚠️ Игнорируем GET-запрос на /edit/{chat_id}/{message_id}")
+        return jsonify({"error": "Method Not Allowed"}), 405
+
     # Декодируем chat_id и topic_id
     chat_id, _ = decode_params(encoded_params)
     if not chat_id:
         logger.warning(f"⚠️ Ошибка декодирования: некорректные параметры ({encoded_params})")
         return jsonify({"error": "Invalid parameters"}), 400
-
-    # Если Telegram делает GET-запрос, игнорируем его
-    if request.method == "GET":
-        logger.info(f"⚠️ Игнорируем GET-запрос на /edit/{chat_id}/{message_id}")
-        return jsonify({"error": "Method Not Allowed"}), 405
 
     data = request.get_json()
     if not data or "text" not in data:
@@ -186,15 +186,14 @@ def delete_message(encoded_params, message_id):
     Удаляет сообщение в указанном чате.
     """
     # Декодируем chat_id и topic_id
+    if request.method == "GET":
+        logger.info(f"⚠️ Игнорируем GET-запрос на /delete/{chat_id}/{message_id}")
+        return jsonify({"error": "Method Not Allowed"}), 405
+    
     chat_id, _ = decode_params(encoded_params)
     if not chat_id:
         logger.warning(f"⚠️ Ошибка декодирования: некорректные параметры ({encoded_params})")
         return jsonify({"error": "Invalid parameters"}), 400
-
-    # Если Telegram делает GET-запрос, игнорируем его
-    if request.method == "GET":
-        logger.info(f"⚠️ Игнорируем GET-запрос на /delete/{chat_id}/{message_id}")
-        return jsonify({"error": "Method Not Allowed"}), 405
 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -267,17 +266,17 @@ async def start(update, context: ContextTypes.DEFAULT_TYPE):
 
     if encoded_topic:
         await update.message.reply_text(
-            f"📩 Отправить в топик: {SERVER_URL}/post/{encoded_topic}\n"
-            f"✏️ Редактировать сообщение: {SERVER_URL}/edit/{encoded_topic}/<message_id>\n"
-            f"📄 Получить текст сообщения: {SERVER_URL}/get/{encoded_topic}/<message_id>\n"
+            f"📩 Отправить в топик: \n{SERVER_URL}/post/{encoded_topic}\n"
+            f"✏️ Редактировать сообщение: \n{SERVER_URL}/edit/{encoded_topic}/<message_id>\n"
+            f"📄 Получить текст сообщения: \n{SERVER_URL}/get/{encoded_topic}/<message_id>\n"
         )
         logger.info(f"📢 Пользователь {username} запросил ссылки для топика {update.message.message_thread_id} в чате {chat_id}")
     else:
         await update.message.reply_text(
-            f"📩 Отправить в общий чат: {SERVER_URL}/post/{encoded_general}\n"
-            f"✏️ Редактировать: {SERVER_URL}/edit/{encoded_general}/<message_id>\n"
-            f"🗑 Удалить сообщение: {SERVER_URL}/delete/{encoded_general}/<message_id>\n"
-            f"📄 Получить текст сообщения: {SERVER_URL}/get/{encoded_general}/<message_id>\n"
+            f"📩 Отправить в общий чат: \n{SERVER_URL}/post/{encoded_general}\n"
+            f"✏️ Редактировать: \n{SERVER_URL}/edit/{encoded_general}/<message_id>\n"
+            f"🗑 Удалить сообщение: \n{SERVER_URL}/delete/{encoded_general}/<message_id>\n"
+            f"📄 Получить текст сообщения: \n{SERVER_URL}/get/{encoded_general}/<message_id>\n"
         )
         logger.info(f"📢 Пользователь {username} запросил ссылки для General-чата {chat_id}")
 
