@@ -24,21 +24,20 @@ app = Flask(__name__)
 
 def format_json_as_html(data):
     """
-    Преобразует JSON в отформатированное HTML-сообщение для Telegram.
+    Преобразует JSON в читаемый HTML-формат, убирая "text" и ненужный заголовок.
     """
-    formatted_text = "<b>🔹 Новые данные:</b>\n"
-    
+    if "text" in data:
+        return data["text"]  # Возвращаем только текст без лишнего оформления
+
+    formatted_text = ""
     for key, value in data.items():
         if isinstance(value, dict):
-            # Если значение - словарь, рекурсивно обрабатываем его
             formatted_text += f"<b>{key}:</b>\n"
             for sub_key, sub_value in value.items():
                 formatted_text += f"  <i>{sub_key}:</i> {sub_value}\n"
         elif isinstance(value, list):
-            # Если значение - список, отображаем элементы в строку
             formatted_text += f"<b>{key}:</b> " + ", ".join(str(item) for item in value) + "\n"
         else:
-            # Обычные ключи-значения
             formatted_text += f"<b>{key}:</b> {value}\n"
 
     return formatted_text.strip()
