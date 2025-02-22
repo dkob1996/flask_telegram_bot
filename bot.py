@@ -5,7 +5,7 @@ from flask import Flask, request, jsonify
 from telegram import Bot
 from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, ContextTypes
-from telegram.utils.request import Request
+#from telegram.utils.request import Request
 
 TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
@@ -20,8 +20,9 @@ if not SERVER_URL:
     raise ValueError("RAILWAY_PUBLIC_DOMAIN environment variable is not set!")
 
 # Создаём Request с увеличенным пулом соединений и настраиваемыми таймаутами
-req = Request(con_pool_size=20, read_timeout=10, connect_timeout=10)
-bot = Bot(token=TOKEN, request=req)
+#req = Request(con_pool_size=20, read_timeout=10, connect_timeout=10)
+#bot = Bot(token=TOKEN, request=req)
+bot = Bot(token=TOKEN)
 app = Flask(__name__)
 
 @app.route('/post/<topic_id>', methods=['POST'])
