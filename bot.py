@@ -6,6 +6,7 @@ from telegram import Bot
 from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, ContextTypes
 import logging
+import base64
 
 TOKEN = os.environ.get("BOT_TOKEN")
 SERVER_URL = os.environ.get("RAILWAY_PUBLIC_DOMAIN")
@@ -56,48 +57,64 @@ def format_json_as_html(data):
     logger.info(f"✅ JSON успешно преобразован в HTML, длина: {len(formatted_text)} символов")
     return formatted_text.strip()
 
-@app.route('/post/<chat_id>/<topic_id>', methods=['POST'])
-def post_to_chat(chat_id, topic_id):
+def encode_params(chat_id, topic_id):
+    """
+    Кодирует chat_id и topic_id в Base64.
+    """
+    raw_string = f"{chat_id}:{topic_id}"
+    return base64.urlsafe_b64encode(raw_string.encode()).decode()
+
+def decode_params(encoded_string):
+    """
+    Декодирует chat_id и topic_id из Base64.
+    """
+    try:
+        decoded = base64.urlsafe_b64decode(encoded_string).decode()
+        chat_id, topic_id = decoded.split(":")
+        return chat_id, topic_id
+    except Exception as e:
+        logger.error(f"❌ Ошибка декодирования параметров: {str(e)}")
+        return None, None
+
+@app.route('/post/<encoded_params>', methods=['POST'])
+def post_to_chat(encoded_params):
     """
     Отправляет сообщение в указанный чат или топик.
     """
+    # Декодируем параметры
+    chat_id, topic_id = decode_params(encoded_params)
+    if not chat_id:
+        logger.warning(f"⚠️ Ошибка декодирования: некорректные параметры ({encoded_params})")
+        return jsonify({"error": "Invalid parameters"}), 400
+
+    # Если Telegram делает GET-запрос, игнорируем его
+    if request.method == "GET":
+        logger.info(f"⚠️ Игнорируем GET-запрос на /post/{chat_id}/{topic_id}")
+        return jsonify({"error": "Method Not Allowed"}), 405
+
     data = request.get_json()
     if not data:
         logger.warning(f"⚠️ Ошибка отправки: пустой JSON (chat_id={chat_id})")
         return jsonify({"error": "Invalid JSON"}), 400
 
     message = format_json_as_html(data)
-    thread_id = None
+    thread_id = None if topic_id.lower() == "general" else int(topic_id)
 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
         local_bot = Bot(token=TOKEN)
 
-        # Определяем, отправка идёт в топик или General
-        if topic_id.lower() == "general":
+        if thread_id is None:
+            # Отправка в General
             sent_message = loop.run_until_complete(
-                local_bot.send_message(
-                    chat_id=chat_id,
-                    text=message,
-                    parse_mode=ParseMode.HTML
-                )
+                local_bot.send_message(chat_id=chat_id, text=message, parse_mode=ParseMode.HTML)
             )
             logger.info(f"✅ Сообщение {sent_message.message_id} отправлено в General-чат {chat_id}")
         else:
-            try:
-                thread_id = int(topic_id)
-            except ValueError:
-                logger.warning(f"⚠️ Ошибка: topic_id '{topic_id}' не является числом (chat_id={chat_id})")
-                return jsonify({"error": "topic_id must be an integer or 'general'"}), 400
-
+            # Отправка в топик
             sent_message = loop.run_until_complete(
-                local_bot.send_message(
-                    chat_id=chat_id,
-                    text=message,
-                    parse_mode=ParseMode.HTML,
-                    message_thread_id=thread_id
-                )
+                local_bot.send_message(chat_id=chat_id, text=message, parse_mode=ParseMode.HTML, message_thread_id=thread_id)
             )
             logger.info(f"✅ Сообщение {sent_message.message_id} отправлено в топик {thread_id} (чат {chat_id})")
 
@@ -116,12 +133,22 @@ def post_to_chat(chat_id, topic_id):
         loop.close()
 
 
-
-@app.route('/edit/<chat_id>/<message_id>', methods=['POST'])
-def edit_message(chat_id, message_id):
+@app.route('/edit/<encoded_params>/<message_id>', methods=['POST'])
+def edit_message(encoded_params, message_id):
     """
     Редактирует сообщение в указанном чате или топике.
     """
+    # Декодируем chat_id и topic_id
+    chat_id, _ = decode_params(encoded_params)
+    if not chat_id:
+        logger.warning(f"⚠️ Ошибка декодирования: некорректные параметры ({encoded_params})")
+        return jsonify({"error": "Invalid parameters"}), 400
+
+    # Если Telegram делает GET-запрос, игнорируем его
+    if request.method == "GET":
+        logger.info(f"⚠️ Игнорируем GET-запрос на /edit/{chat_id}/{message_id}")
+        return jsonify({"error": "Method Not Allowed"}), 405
+
     data = request.get_json()
     if not data or "text" not in data:
         logger.warning(f"⚠️ Ошибка редактирования: не передан 'text' (message_id={message_id}, chat_id={chat_id})")
@@ -133,6 +160,7 @@ def edit_message(chat_id, message_id):
     asyncio.set_event_loop(loop)
     try:
         local_bot = Bot(token=TOKEN)
+
         loop.run_until_complete(
             local_bot.edit_message_text(
                 chat_id=chat_id,
@@ -151,11 +179,23 @@ def edit_message(chat_id, message_id):
         loop.close()
 
 
-@app.route('/delete/<chat_id>/<message_id>', methods=['POST'])
-def delete_message(chat_id, message_id):
+
+@app.route('/delete/<encoded_params>/<message_id>', methods=['POST'])
+def delete_message(encoded_params, message_id):
     """
     Удаляет сообщение в указанном чате.
     """
+    # Декодируем chat_id и topic_id
+    chat_id, _ = decode_params(encoded_params)
+    if not chat_id:
+        logger.warning(f"⚠️ Ошибка декодирования: некорректные параметры ({encoded_params})")
+        return jsonify({"error": "Invalid parameters"}), 400
+
+    # Если Telegram делает GET-запрос, игнорируем его
+    if request.method == "GET":
+        logger.info(f"⚠️ Игнорируем GET-запрос на /delete/{chat_id}/{message_id}")
+        return jsonify({"error": "Method Not Allowed"}), 405
+
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
@@ -175,16 +215,25 @@ def delete_message(chat_id, message_id):
     finally:
         loop.close()
 
-@app.route('/get/<chat_id>/<message_id>', methods=['GET'])
-def get_message_text(chat_id, message_id):
+
+@app.route('/get/<encoded_params>/<message_id>', methods=['GET'])
+def get_message_text(encoded_params, message_id):
     """
     Получает текст сообщения из Telegram по message_id.
     """
+    # Декодируем chat_id и topic_id
+    chat_id, _ = decode_params(encoded_params)
+    if not chat_id:
+        logger.warning(f"⚠️ Ошибка декодирования: некорректные параметры ({encoded_params})")
+        return jsonify({"error": "Invalid parameters"}), 400
+
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
     try:
         local_bot = Bot(token=TOKEN)
+
+        # Запрашиваем сообщение у Telegram
         updates = loop.run_until_complete(local_bot.get_updates())
 
         for update in updates:
@@ -202,31 +251,36 @@ def get_message_text(chat_id, message_id):
     finally:
         loop.close()
 
+
 async def start(update, context: ContextTypes.DEFAULT_TYPE):
     """
     Отправляет ссылки для отправки, редактирования, удаления и получения сообщений.
+    Теперь chat_id и topic_id передаются в Base64.
     """
     user = update.effective_user
     chat_id = update.message.chat_id
     username = f"@{user.username}" if user.username else f"{user.first_name} {user.last_name or ''}".strip()
 
-    if update.message and update.message.message_thread_id:
-        thread_id = update.message.message_thread_id
+    # Кодируем chat_id и topic_id
+    encoded_general = encode_params(chat_id, "general")
+    encoded_topic = encode_params(chat_id, str(update.message.message_thread_id)) if update.message.message_thread_id else None
+
+    if encoded_topic:
         await update.message.reply_text(
-            f"Ссылка для отправки в ТОПИК: {SERVER_URL}/post/{chat_id}/{thread_id}\n"
-            f"Редактировать: {SERVER_URL}/edit/{chat_id}/<message_id>\n"
-            f"Удалить сообщение: {SERVER_URL}/delete/{chat_id}/<message_id>\n"
-            f"Получить текст сообщения: {SERVER_URL}/get/{chat_id}/<message_id>\n"
+            f"📩 Отправить в топик: {SERVER_URL}/post/{encoded_topic}\n"
+            f"✏️ Редактировать сообщение: {SERVER_URL}/edit/{encoded_topic}/<message_id>\n"
+            f"📄 Получить текст сообщения: {SERVER_URL}/get/{encoded_topic}/<message_id>\n"
         )
-        logger.info(f"📢 Пользователь {username} запросил ссылки для топика {thread_id} в чате {chat_id}")
+        logger.info(f"📢 Пользователь {username} запросил ссылки для топика {update.message.message_thread_id} в чате {chat_id}")
     else:
         await update.message.reply_text(
-            f"Ссылка для отправки в общий чат: {SERVER_URL}/post/{chat_id}/general\n"
-            f"Редактировать: {SERVER_URL}/edit/{chat_id}/<message_id>\n"
-            f"Удалить сообщение: {SERVER_URL}/delete/{chat_id}/<message_id>\n"
-            f"Получить текст сообщения: {SERVER_URL}/get/{chat_id}/<message_id>\n"
+            f"📩 Отправить в общий чат: {SERVER_URL}/post/{encoded_general}\n"
+            f"✏️ Редактировать: {SERVER_URL}/edit/{encoded_general}/<message_id>\n"
+            f"🗑 Удалить сообщение: {SERVER_URL}/delete/{encoded_general}/<message_id>\n"
+            f"📄 Получить текст сообщения: {SERVER_URL}/get/{encoded_general}/<message_id>\n"
         )
         logger.info(f"📢 Пользователь {username} запросил ссылки для General-чата {chat_id}")
+
 
 
 
