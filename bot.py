@@ -57,24 +57,39 @@ def format_json_as_html(data):
     logger.info(f"✅ JSON успешно преобразован в HTML, длина: {len(formatted_text)} символов")
     return formatted_text.strip()
 
-def encode_params(chat_id, topic_id):
+def encode_params(chat_id, topic_id=None):
     """
     Кодирует chat_id и topic_id в Base64.
+    - Если topic_id указан, кодируем chat_id + topic_id (для отправки сообщений).
+    - Если topic_id НЕ указан, кодируем ТОЛЬКО chat_id (для редактирования, удаления, получения текста).
     """
-    raw_string = f"{chat_id}:{topic_id}"
+    if topic_id is not None:
+        raw_string = f"{chat_id}:{topic_id}"  # Кодируем chat_id + topic_id
+    else:
+        raw_string = chat_id  # Кодируем только chat_id
+
     return base64.urlsafe_b64encode(raw_string.encode()).decode()
+
 
 def decode_params(encoded_string):
     """
-    Декодирует chat_id и topic_id из Base64.
+    Декодирует Base64 в chat_id и topic_id.
+    - Если в коде ДВА параметра (chat_id:topic_id), то декодируем Оба.
+    - Если в коде ОДИН параметр (chat_id), значит, topic_id не передавался.
     """
     try:
         decoded = base64.urlsafe_b64decode(encoded_string).decode()
-        chat_id, topic_id = decoded.split(":")
-        return chat_id, topic_id
+        parts = decoded.split(":")
+
+        if len(parts) == 2:
+            return parts[0], parts[1]  # chat_id, topic_id
+        elif len(parts) == 1:
+            return parts[0], None  # chat_id, без topic_id
+
     except Exception as e:
-        logger.error(f"❌ Ошибка декодирования параметров: {str(e)}")
+        logger.error(f"❌ Ошибка декодирования Base64 ({encoded_string}): {str(e)}")
         return None, None
+
 
 @app.route('/post/<encoded_params>', methods=['POST'])
 def post_to_chat(encoded_params):
@@ -85,20 +100,29 @@ def post_to_chat(encoded_params):
     if request.method == "GET":
         logger.info(f"⚠️ Игнорируем GET-запрос на /post/{chat_id}/{topic_id}")
         return jsonify({"error": "Method Not Allowed"}), 405
-
+    
     # Декодируем параметры
     chat_id, topic_id = decode_params(encoded_params)
     if not chat_id:
         logger.warning(f"⚠️ Ошибка декодирования: некорректные параметры ({encoded_params})")
         return jsonify({"error": "Invalid parameters"}), 400
 
+    # Получаем JSON-данные
     data = request.get_json()
     if not data:
         logger.warning(f"⚠️ Ошибка отправки: пустой JSON (chat_id={chat_id})")
         return jsonify({"error": "Invalid JSON"}), 400
 
     message = format_json_as_html(data)
-    thread_id = None if topic_id.lower() == "general" else int(topic_id)
+
+    # Определяем, отправка идёт в General или топик
+    thread_id = None
+    if topic_id and topic_id.lower() != "general":
+        try:
+            thread_id = int(topic_id)
+        except ValueError:
+            logger.warning(f"⚠️ Ошибка: topic_id '{topic_id}' не является числом (chat_id={chat_id})")
+            return jsonify({"error": "Invalid topic_id"}), 400
 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -133,6 +157,7 @@ def post_to_chat(encoded_params):
         loop.close()
 
 
+
 @app.route('/edit/<encoded_params>/<message_id>', methods=['POST'])
 def edit_message(encoded_params, message_id):
     """
@@ -142,13 +167,14 @@ def edit_message(encoded_params, message_id):
     if request.method == "GET":
         logger.info(f"⚠️ Игнорируем GET-запрос на /edit/{chat_id}/{message_id}")
         return jsonify({"error": "Method Not Allowed"}), 405
-
-    # Декодируем chat_id и topic_id
+    
+    # Декодируем chat_id (topic_id не нужен)
     chat_id, _ = decode_params(encoded_params)
     if not chat_id:
         logger.warning(f"⚠️ Ошибка декодирования: некорректные параметры ({encoded_params})")
         return jsonify({"error": "Invalid parameters"}), 400
 
+    # Получаем JSON-данные
     data = request.get_json()
     if not data or "text" not in data:
         logger.warning(f"⚠️ Ошибка редактирования: не передан 'text' (message_id={message_id}, chat_id={chat_id})")
@@ -180,16 +206,18 @@ def edit_message(encoded_params, message_id):
 
 
 
+
 @app.route('/delete/<encoded_params>/<message_id>', methods=['POST'])
 def delete_message(encoded_params, message_id):
     """
     Удаляет сообщение в указанном чате.
     """
-    # Декодируем chat_id и topic_id
+    # Если Telegram делает GET-запрос, игнорируем его
     if request.method == "GET":
         logger.info(f"⚠️ Игнорируем GET-запрос на /delete/{chat_id}/{message_id}")
         return jsonify({"error": "Method Not Allowed"}), 405
     
+    # Декодируем chat_id (topic_id игнорируем)
     chat_id, _ = decode_params(encoded_params)
     if not chat_id:
         logger.warning(f"⚠️ Ошибка декодирования: некорректные параметры ({encoded_params})")
@@ -199,6 +227,7 @@ def delete_message(encoded_params, message_id):
     asyncio.set_event_loop(loop)
     try:
         local_bot = Bot(token=TOKEN)
+
         loop.run_until_complete(
             local_bot.delete_message(
                 chat_id=chat_id,
@@ -209,10 +238,16 @@ def delete_message(encoded_params, message_id):
         return jsonify({"success": f"Message {message_id} deleted"})
 
     except Exception as e:
-        logger.error(f"❌ Ошибка при удалении сообщения {message_id} в чате {chat_id}: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        error_message = str(e)
+        if "message to delete not found" in error_message:
+            logger.warning(f"⚠️ Сообщение {message_id} уже удалено или не найдено в чате {chat_id}.")
+            return jsonify({"warning": f"Message {message_id} already deleted or not found"}), 200
+        else:
+            logger.error(f"❌ Ошибка при удалении сообщения {message_id} в чате {chat_id}: {error_message}")
+            return jsonify({"error": error_message}), 500
     finally:
         loop.close()
+
 
 
 @app.route('/get/<encoded_params>/<message_id>', methods=['GET'])
@@ -220,7 +255,7 @@ def get_message_text(encoded_params, message_id):
     """
     Получает текст сообщения из Telegram по message_id.
     """
-    # Декодируем chat_id и topic_id
+    # Декодируем chat_id (topic_id игнорируем)
     chat_id, _ = decode_params(encoded_params)
     if not chat_id:
         logger.warning(f"⚠️ Ошибка декодирования: некорректные параметры ({encoded_params})")
@@ -232,56 +267,66 @@ def get_message_text(encoded_params, message_id):
     try:
         local_bot = Bot(token=TOKEN)
 
-        # Запрашиваем сообщение у Telegram
-        updates = loop.run_until_complete(local_bot.get_updates())
+        # Пытаемся получить сообщение напрямую
+        message = loop.run_until_complete(
+            local_bot.forward_message(
+                chat_id=chat_id,
+                from_chat_id=chat_id,
+                message_id=int(message_id)
+            )
+        )
 
-        for update in updates:
-            if update.message and update.message.chat_id == int(chat_id) and update.message.message_id == int(message_id):
-                return jsonify({"text": update.message.text})
-
-        logger.warning(f"⚠️ Сообщение {message_id} не найдено в чате {chat_id}")
-        return jsonify({"error": "Message not found"}), 404
+        return jsonify({"text": message.text})
 
     except Exception as e:
         error_message = str(e)
-        logger.error(f"❌ Ошибка при получении текста сообщения {message_id} в чате {chat_id}: {error_message}")
-        return jsonify({"error": error_message}), 500
+        if "message to get not found" in error_message:
+            logger.warning(f"⚠️ Сообщение {message_id} не найдено в чате {chat_id}")
+            return jsonify({"error": "Message not found"}), 404
+        else:
+            logger.error(f"❌ Ошибка при получении текста сообщения {message_id} в чате {chat_id}: {error_message}")
+            return jsonify({"error": error_message}), 500
 
     finally:
         loop.close()
+
 
 
 async def start(update, context: ContextTypes.DEFAULT_TYPE):
     """
     Отправляет ссылки для отправки, редактирования, удаления и получения сообщений.
     Теперь chat_id и topic_id передаются в Base64.
+    - Отправка: chat_id + topic_id (только для сообщений)
+    - Изменение/удаление/получение: только chat_id (единый формат для General и топиков)
     """
     user = update.effective_user
     chat_id = update.message.chat_id
+    thread_id = update.message.message_thread_id
     username = f"@{user.username}" if user.username else f"{user.first_name} {user.last_name or ''}".strip()
 
-    # Кодируем chat_id и topic_id
-    encoded_general = encode_params(chat_id, "general")
-    encoded_topic = encode_params(chat_id, str(update.message.message_thread_id)) if update.message.message_thread_id else None
+    # Кодируем chat_id и topic_id для отправки сообщений
+    encoded_general = encode_params(chat_id, "general")  # Для General-чата
+    encoded_topic = encode_params(chat_id, str(thread_id)) if thread_id else None  # Для топика
+
+    # Кодируем chat_id отдельно для удаления, редактирования, получения текста
+    encoded_chat = encode_params(chat_id)  # Единый код для General и топиков
 
     if encoded_topic:
         await update.message.reply_text(
             f"📩 Отправить в топик: \n{SERVER_URL}/post/{encoded_topic}\n"
-            f"✏️ Редактировать сообщение: \n{SERVER_URL}/edit/{encoded_topic}/<message_id>\n"
-            f"📄 Получить текст сообщения: \n{SERVER_URL}/get/{encoded_topic}/<message_id>\n"
+            f"✏️ Редактировать сообщение: \n{SERVER_URL}/edit/{encoded_chat}/<message_id>\n"
+            f"🗑 Удалить сообщение: \n{SERVER_URL}/delete/{encoded_chat}/<message_id>\n"
+            f"📄 Получить текст сообщения: \n{SERVER_URL}/get/{encoded_chat}/<message_id>\n"
         )
-        logger.info(f"📢 Пользователь {username} запросил ссылки для топика {update.message.message_thread_id} в чате {chat_id}")
+        logger.info(f"📢 Пользователь {username} запросил ссылки для топика {thread_id} в чате {chat_id}")
     else:
         await update.message.reply_text(
             f"📩 Отправить в общий чат: \n{SERVER_URL}/post/{encoded_general}\n"
-            f"✏️ Редактировать: \n{SERVER_URL}/edit/{encoded_general}/<message_id>\n"
-            f"🗑 Удалить сообщение: \n{SERVER_URL}/delete/{encoded_general}/<message_id>\n"
-            f"📄 Получить текст сообщения: \n{SERVER_URL}/get/{encoded_general}/<message_id>\n"
+            f"✏️ Редактировать: \n{SERVER_URL}/edit/{encoded_chat}/<message_id>\n"
+            f"🗑 Удалить сообщение: \n{SERVER_URL}/delete/{encoded_chat}/<message_id>\n"
+            f"📄 Получить текст сообщения: \n{SERVER_URL}/get/{encoded_chat}/<message_id>\n"
         )
         logger.info(f"📢 Пользователь {username} запросил ссылки для General-чата {chat_id}")
-
-
-
 
 
 def run_flask():
