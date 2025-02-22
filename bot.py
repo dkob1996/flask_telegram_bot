@@ -21,6 +21,7 @@ PORT = int(os.environ.get("SERVER_PORT", 5000))
 
 print(TOKEN)
 print(SERVER_URL)
+print(PORT)
 
 bot = Bot(token=TOKEN)
 app = Flask(__name__)
