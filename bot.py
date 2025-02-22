@@ -18,17 +18,13 @@ if not CHAT_ID:
 if not SERVER_URL:
     raise ValueError("RAILWAY_PUBLIC_DOMAIN environment variable is not set!")
 
-# Глобальный бот используется только для Application (polling)
 global_bot = Bot(token=TOKEN)
 app = Flask(__name__)
 
 def format_json_as_html(data):
-    """
-    Преобразует JSON в читаемый HTML-формат, убирая "text" и ненужный заголовок.
-    """
     if "text" in data:
-        return data["text"]  # Возвращаем только текст без лишнего оформления
-
+        return data["text"]
+    
     formatted_text = ""
     for key, value in data.items():
         if isinstance(value, dict):
@@ -39,7 +35,7 @@ def format_json_as_html(data):
             formatted_text += f"<b>{key}:</b> " + ", ".join(str(item) for item in value) + "\n"
         else:
             formatted_text += f"<b>{key}:</b> {value}\n"
-
+    
     return formatted_text.strip()
 
 @app.route('/post/<topic_id>', methods=['POST'])
@@ -50,28 +46,27 @@ def post_to_topic(topic_id):
 
     message = format_json_as_html(data)
 
-    # Создаем новый event loop для этого запроса
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
-        # Создаем новый экземпляр бота, который использует новый цикл
         local_bot = Bot(token=TOKEN)
+        thread_id = None
+
         if topic_id == "general":
-            loop.run_until_complete(
+            sent_message = loop.run_until_complete(
                 local_bot.send_message(
                     chat_id=CHAT_ID,
                     text=message,
                     parse_mode=ParseMode.HTML
                 )
             )
-            return jsonify({"success": "Message sent to general chat"})
         else:
             try:
                 thread_id = int(topic_id)
             except ValueError:
                 return jsonify({"error": "topic_id must be an integer or 'general'"}), 400
 
-            loop.run_until_complete(
+            sent_message = loop.run_until_complete(
                 local_bot.send_message(
                     chat_id=CHAT_ID,
                     text=message,
@@ -79,7 +74,41 @@ def post_to_topic(topic_id):
                     message_thread_id=thread_id
                 )
             )
-            return jsonify({"success": "Message sent to topic", "topic_id": thread_id})
+
+        return jsonify({
+            "success": "Message sent",
+            "message_id": sent_message.message_id,
+            "thread_id": thread_id  # Возвращаем thread_id
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        loop.close()
+
+@app.route('/edit/<message_id>', methods=['POST'])
+def edit_message(message_id):
+    data = request.get_json()
+    if not data or "text" not in data:
+        return jsonify({"error": "Invalid JSON, 'text' is required"}), 400
+
+    new_message = format_json_as_html(data)
+
+    thread_id = data.get("thread_id")  # Берём thread_id из запроса
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        local_bot = Bot(token=TOKEN)
+        loop.run_until_complete(
+            local_bot.edit_message_text(
+                chat_id=CHAT_ID,
+                message_id=int(message_id),
+                text=new_message,
+                parse_mode=ParseMode.HTML,
+                message_thread_id=thread_id  # Передаём thread_id (если есть)
+            )
+        )
+        return jsonify({"success": "Message edited", "message_id": message_id})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:
@@ -89,11 +118,13 @@ async def start(update, context: ContextTypes.DEFAULT_TYPE):
     if update.message and update.message.message_thread_id:
         thread_id = update.message.message_thread_id
         await update.message.reply_text(
-            f"Ссылка для отправки в ТОПИК: {SERVER_URL}/post/{thread_id}"
+            f"Ссылка для отправки в ТОПИК: {SERVER_URL}/post/{thread_id}\n"
+            f"Редактировать: {SERVER_URL}/edit/<message_id> (указать thread_id)"
         )
     else:
         await update.message.reply_text(
-            f"Ссылка для отправки в общий чат: {SERVER_URL}/post/general"
+            f"Ссылка для отправки в общий чат: {SERVER_URL}/post/general\n"
+            f"Редактировать: {SERVER_URL}/edit/<message_id>"
         )
 
 def run_flask():

@@ -16,15 +16,28 @@
 
 Чтобы изолировать зависимости проекта, создайте виртуальное окружение:
 
+- Для Windows
 ```bash
-python -m venv venv
-source venv/bin/activate  # Для Linux/MacOS
-venv\Scripts\activate     # Для Windows
+python -m venv myenv
+myvenv\Scripts\activate
+```
+
+- Для Linux/MacOS
+```bash
+python3 -m venv myenv
+source myenv/bin/activate
 ```
 
 ## 3. Установка необходимых библиотек
 
 Для работы с Telegram-ботом и Flask, установите необходимые библиотеки с помощью pip:
+
+- Способ 1. Через requirements.txt
+```bash
+pip install -r requirements.txt
+```
+
+- Способ 2. Вручную
 
 1. Установка библиотеки для работы с Telegram:
 ```bash
@@ -36,25 +49,10 @@ pip install python-telegram-bot
 pip install flask
 ```
 
-3. Установка библиотеки для работы с YAML-файлами:
-```bash
-pip install pyyaml
-```
+## 4. Размещение бота на хостинге
 
-## 4. Создание YAML файла конфигурации
-
-Создайте файл config.yaml, чтобы хранить настройки бота.
-
-1. Создайте файл config.yaml в корне проекта.
-2. Заполните файл следующим образом:
-```yaml
-server_url: "адрес_сервера"
-token: "токен_бота"
-chat_id: "-100айди_канала"
-```
-* `server_url`: адрес вашего сервера (например, `http://localhost:5000`).
-* `token`: токен вашего бота, полученный от BotFather.
-* `chat_id`: ID вашего канала в Telegram, куда будут отправляться сообщения.
+1. Я выбрал хостинг railway.app
+2. Установил параметры окружения
 
 ## 5. Запуск бота в Telegram-канале
 
