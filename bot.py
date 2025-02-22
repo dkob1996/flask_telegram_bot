@@ -20,6 +20,7 @@ SERVER_URL = os.environ.get("RAILWAY_PUBLIC_DOMAIN")
 PORT = int(os.environ.get("SERVER_PORT", 5000))
 
 print(TOKEN)
+print(SERVER_URL)
 
 bot = Bot(token=TOKEN)
 app = Flask(__name__)
