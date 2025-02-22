@@ -19,7 +19,9 @@ CHAT_ID = os.environ.get("CHAT_ID")
 SERVER_URL = os.environ.get("RAILWAY_PUBLIC_DOMAIN")
 PORT = int(os.environ.get("SERVER_PORT", 5000))
 
-bot = Bot(token="abcdef")
+print(TOKEN)
+
+bot = Bot(token=TOKEN)
 app = Flask(__name__)
 
 # Храним ссылки на топики
