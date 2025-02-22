@@ -12,6 +12,7 @@ with open("config.yaml", "r") as config_file:
 TOKEN = config["token"]
 CHAT_ID = config["chat_id"]
 SERVER_URL = config["server_url"]
+PORT = config["server_port"]
 
 bot = Bot(token=TOKEN)
 app = Flask(__name__)
@@ -38,14 +39,14 @@ async def start(update, context: ContextTypes.DEFAULT_TYPE):
     if update.message and update.message.message_thread_id:
         topic_id = update.message.message_thread_id
         topic_links[topic_id] = f"{SERVER_URL}/post/{topic_id}"
-        await update.message.reply_text(f"Send JSON to: {SERVER_URL}/post/{topic_id}")
+        await update.message.reply_text(f"Ссылка для отправки в ТОПИК: {SERVER_URL}/post/{topic_id}")
     else:
         topic_links["general"] = f"{SERVER_URL}/post/general"
-        await update.message.reply_text(f"Send JSON to the general chat: {SERVER_URL}/post/general")
+        await update.message.reply_text(f"Ссылка для отправки в общий чат: {SERVER_URL}/post/general")
 
 if __name__ == "__main__":
     def run_flask():
-        app.run(host="0.0.0.0", port=5000)
+        app.run(host="0.0.0.0", port=PORT)
     
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.start()
