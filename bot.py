@@ -14,7 +14,7 @@ CHAT_ID = config["chat_id"]
 SERVER_URL = config["server_url"]
 PORT = config["server_port"]
 '''
-TOKEN = os.environ.get("TOKEN")
+TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 SERVER_URL = os.environ.get("RAILWAY_PUBLIC_DOMAIN")
 PORT = int(os.environ.get("SERVER_PORT", 5000))
