@@ -28,6 +28,8 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+# Отключаем детальные HTTP-запросы из логов
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
@@ -186,20 +188,24 @@ async def start(update, context: ContextTypes.DEFAULT_TYPE):
     Отправляет ссылки на отправку, редактирование и удаление сообщений.
     Удаление показываем только для General-чата.
     """
+    user = update.effective_user
+    username = f"@{user.username}" if user.username else f"{user.first_name} {user.last_name or ''}".strip()
+
     if update.message and update.message.message_thread_id:
         thread_id = update.message.message_thread_id
         await update.message.reply_text(
             f"Ссылка для отправки в ТОПИК: {SERVER_URL}/post/{thread_id}\n"
-            f"Редактировать: {SERVER_URL}/edit/<message_id>"
+            f"Редактировать: {SERVER_URL}/edit/<message_id> (указать thread_id)"
         )
-        logger.info(f"📢 Пользователь {update.effective_user.id} запросил ссылки для топика {thread_id}")
+        logger.info(f"📢 Пользователь {username} запросил ссылки для топика {thread_id}")
     else:
         await update.message.reply_text(
             f"Ссылка для отправки в общий чат: {SERVER_URL}/post/general\n"
             f"Редактировать: {SERVER_URL}/edit/<message_id>\n"
             f"Удалить сообщение: {SERVER_URL}/delete/<message_id>"
         )
-        logger.info(f"📢 Пользователь {update.effective_user.id} запросил ссылки для General-чата")
+        logger.info(f"📢 Пользователь {username} запросил ссылки для General-чата")
+
 
 
 def run_flask():
