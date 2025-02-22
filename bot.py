@@ -1,4 +1,4 @@
-import yaml
+#import yaml
 import os
 from flask import Flask, request, jsonify
 from telegram import Bot
@@ -16,7 +16,7 @@ PORT = config["server_port"]
 '''
 TOKEN = os.environ.get("TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
-SERVER_URL = os.environ.get("SERVER_URL")
+SERVER_URL = os.environ.get("RAILWAY_PUBLIC_DOMAIN")
 PORT = int(os.environ.get("SERVER_PORT", 5000))
 
 bot = Bot(token=TOKEN)
