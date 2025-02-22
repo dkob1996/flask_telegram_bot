@@ -18,8 +18,8 @@ if not CHAT_ID:
 if not SERVER_URL:
     raise ValueError("RAILWAY_PUBLIC_DOMAIN environment variable is not set!")
 
-# Инициализируем бота (без кастомного Request, чтобы не было конфликтов)
-bot = Bot(token=TOKEN)
+# Глобальный бот используется только для Application (polling)
+global_bot = Bot(token=TOKEN)
 app = Flask(__name__)
 
 @app.route('/post/<topic_id>', methods=['POST'])
@@ -29,12 +29,16 @@ def post_to_topic(topic_id):
         return jsonify({"error": "Invalid JSON"}), 400
 
     message = f"<b>New Data:</b>\n<pre>{data}</pre>"
-    # Создаем новый event loop для каждого запроса
+    
+    # Создаем новый event loop для этого запроса
     loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     try:
+        # Создаем новый экземпляр бота, который использует новый цикл
+        local_bot = Bot(token=TOKEN)
         if topic_id == "general":
             loop.run_until_complete(
-                bot.send_message(
+                local_bot.send_message(
                     chat_id=CHAT_ID,
                     text=message,
                     parse_mode=ParseMode.HTML
@@ -48,7 +52,7 @@ def post_to_topic(topic_id):
                 return jsonify({"error": "topic_id must be an integer or 'general'"}), 400
 
             loop.run_until_complete(
-                bot.send_message(
+                local_bot.send_message(
                     chat_id=CHAT_ID,
                     text=message,
                     parse_mode=ParseMode.HTML,
@@ -76,11 +80,9 @@ def run_flask():
     app.run(host="0.0.0.0", port=PORT)
 
 if __name__ == "__main__":
-    # Запускаем Flask-сервер в отдельном потоке
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.start()
 
-    # Запускаем Telegram-бота в polling-режиме
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.run_polling()
