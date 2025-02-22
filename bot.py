@@ -93,8 +93,6 @@ def edit_message(message_id):
 
     new_message = format_json_as_html(data)
 
-    thread_id = data.get("thread_id")  # Берём thread_id из запроса
-
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
@@ -104,8 +102,7 @@ def edit_message(message_id):
                 chat_id=CHAT_ID,
                 message_id=int(message_id),
                 text=new_message,
-                parse_mode=ParseMode.HTML,
-                message_thread_id=thread_id  # Передаём thread_id (если есть)
+                parse_mode=ParseMode.HTML
             )
         )
         return jsonify({"success": "Message edited", "message_id": message_id})
