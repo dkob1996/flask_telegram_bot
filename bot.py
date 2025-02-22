@@ -300,7 +300,7 @@ async def start(update, context: ContextTypes.DEFAULT_TYPE):
     - Изменение/удаление/получение: только chat_id (единый формат для General и топиков)
     """
     user = update.effective_user
-    chat_id = update.message.chat_id
+    chat_id = str(update.message.chat_id)
     thread_id = update.message.message_thread_id
     username = f"@{user.username}" if user.username else f"{user.first_name} {user.last_name or ''}".strip()
 
