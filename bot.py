@@ -5,6 +5,7 @@ from flask import Flask, request, jsonify
 from telegram import Bot
 from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.utils.request import Request
 
 TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
@@ -18,7 +19,9 @@ if not CHAT_ID:
 if not SERVER_URL:
     raise ValueError("RAILWAY_PUBLIC_DOMAIN environment variable is not set!")
 
-bot = Bot(token=TOKEN)
+# Создаём Request с увеличенным пулом соединений и настраиваемыми таймаутами
+req = Request(con_pool_size=20, read_timeout=10, connect_timeout=10)
+bot = Bot(token=TOKEN, request=req)
 app = Flask(__name__)
 
 @app.route('/post/<topic_id>', methods=['POST'])
@@ -29,20 +32,35 @@ def post_to_topic(topic_id):
 
     message = f"<b>New Data:</b>\n<pre>{data}</pre>"
     try:
+        # Создаем новый цикл событий для каждого запроса
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         if topic_id == "general":
-            asyncio.run(bot.send_message(chat_id=CHAT_ID,
-                                           text=message,
-                                           parse_mode=ParseMode.HTML))
+            loop.run_until_complete(
+                bot.send_message(
+                    chat_id=CHAT_ID,
+                    text=message,
+                    parse_mode=ParseMode.HTML
+                )
+            )
+            loop.close()
             return jsonify({"success": "Message sent to general chat"})
         else:
             try:
                 thread_id = int(topic_id)
             except ValueError:
+                loop.close()
                 return jsonify({"error": "topic_id must be an integer or 'general'"}), 400
-            asyncio.run(bot.send_message(chat_id=CHAT_ID,
-                                           text=message,
-                                           parse_mode=ParseMode.HTML,
-                                           message_thread_id=thread_id))
+
+            loop.run_until_complete(
+                bot.send_message(
+                    chat_id=CHAT_ID,
+                    text=message,
+                    parse_mode=ParseMode.HTML,
+                    message_thread_id=thread_id
+                )
+            )
+            loop.close()
             return jsonify({"success": "Message sent to topic", "topic_id": thread_id})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -64,3 +82,4 @@ if __name__ == "__main__":
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.run_polling()
+
