@@ -1,18 +1,23 @@
 import yaml
+import os
 from flask import Flask, request, jsonify
 from telegram import Bot
 from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, ContextTypes
 import threading
-
+'''
 # Чтение конфигурации из YAML
 with open("config.yaml", "r") as config_file:
     config = yaml.safe_load(config_file)
-
 TOKEN = config["token"]
 CHAT_ID = config["chat_id"]
 SERVER_URL = config["server_url"]
 PORT = config["server_port"]
+'''
+TOKEN = os.environ.get("TOKEN")
+CHAT_ID = os.environ.get("CHAT_ID")
+SERVER_URL = os.environ.get("SERVER_URL")
+PORT = int(os.environ.get("SERVER_PORT", 5000))
 
 bot = Bot(token=TOKEN)
 app = Flask(__name__)
