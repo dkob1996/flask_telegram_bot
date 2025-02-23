@@ -515,7 +515,6 @@ async def start(update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML
         )
         logger.info(f"📢 Пользователь @{user.username} вызвал /start")
-        raise ValueError("💥 Искусственная ошибка для тестирования логирования!")
     except Exception as e:
         log_and_notify(logging.ERROR, f"❌ Ошибка в start: {str(e)}", chat_id, thread_id)
 
@@ -552,7 +551,6 @@ async def commands(update, context: ContextTypes.DEFAULT_TYPE):
                 f"📄 Получить текст сообщения: \n{SERVER_URL}/get/{encoded_chat}/<message_id>\n"
             )
             logger.info(f"📢 Пользователь {username} запросил ссылки для General-чата {chat_id}")
-        raise ValueError("💥 Искусственная ошибка для тестирования логирования!")
     except Exception as e:
         log_and_notify(logging.ERROR, f"❌ Ошибка в сommands: {str(e)}", chat_id, thread_id)
 
@@ -590,7 +588,6 @@ async def logging_commands(update, context: ContextTypes.DEFAULT_TYPE):
 
 
         logger.info(f"📢 Пользователь {username} запросил ссылки для логирования в {'топике ' + str(thread_id) if thread_id else 'General-чате'} (чат {chat_id})")
-        raise ValueError("💥 Искусственная ошибка для тестирования логирования!")
     except Exception as e:
         log_and_notify(logging.ERROR, f"❌ Ошибка в logging_commands: {str(e)}", chat_id, thread_id)
 
