@@ -553,11 +553,17 @@ async def logging_commands(update, context: ContextTypes.DEFAULT_TYPE):
     thread_id = update.message.message_thread_id  # Определяем, в топике ли сообщение
     username = f"@{user.username}" if user.username else f"{user.full_name or 'Без имени'}"
 
+    # 🚨 Логируем значения перед кодированием
+    logger.info(f"📌 Вызов /logging_commands от {username} | chat_id: {chat_id}, thread_id: {thread_id if thread_id else 'None'}")
+
     # Кодируем chat_id и topic_id (если есть)
     if thread_id:
         encoded_logging_chat = encode_params(chat_id, str(thread_id))  # Кодируем с topic_id
     else:
         encoded_logging_chat = encode_params(chat_id)  # Кодируем только chat_id
+
+    # 🚨 Логируем кодированные данные
+    logger.info(f"✅ Кодирование для логирования: {encoded_logging_chat}")
 
     # Формируем ссылки для логирования
     await update.message.reply_text(
@@ -570,7 +576,7 @@ async def logging_commands(update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.HTML
     )
 
-    logger.info(f"📢 Пользователь {username} запросил ссылки для логирования в {'топике ' + str(thread_id) if thread_id else 'General-чате'} (чат {chat_id})")
+    logger.info(f"📢 Логирование настроено для {'топика ' + str(thread_id) if thread_id else 'General-чата'} (чат {chat_id})")
 
 
 
