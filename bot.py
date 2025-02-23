@@ -494,9 +494,6 @@ def log_message(log_type, encoded_chat):
         loop.close()
 
 
-
-
-
 async def start(update, context: ContextTypes.DEFAULT_TYPE):
     """
     Показывает доступные команды.
@@ -545,42 +542,36 @@ async def commands(update, context: ContextTypes.DEFAULT_TYPE):
 async def logging_commands(update, context: ContextTypes.DEFAULT_TYPE):
     """
     Отправляет ссылки для логирования ошибок и предупреждений.
-    Учитывает топики, если они есть в чате.
+    Если вызвано в топике, логирование будет в этот же топик.
+    Если вызвано в общем чате, логирование будет в сам чат.
     """
     if not update.message:
         return
 
     user = update.effective_user
     chat_id = str(update.message.chat_id)
-    thread_id = update.message.message_thread_id  # Проверяем, в топике ли сообщение
+    thread_id = update.message.message_thread_id  # Определяем, в топике ли сообщение
     username = f"@{user.username}" if user.username else f"{user.full_name or 'Без имени'}"
 
-    # Кодируем chat_id и topic_id для логирования
-    encoded_general = encode_params(chat_id)  # Логирование в основной чат
-    encoded_topic = encode_params(chat_id, str(thread_id)) if thread_id else None  # Логирование в топик
-
-    if encoded_topic:
-        await update.message.reply_text(
-            f"📌 <b>Логирование ошибок и предупреждений (Топик):</b>\n\n"
-            f"🔴 <b>Отправить ERROR-лог:</b>\n"
-            f"{SERVER_URL}/log/error/{encoded_topic}\n\n"
-            f"🟡 <b>Отправить WARNING-лог:</b>\n"
-            f"{SERVER_URL}/log/warning/{encoded_topic}\n\n"
-            f"📢 Эти ссылки будут использоваться для логирования в текущем топике.",
-            parse_mode=ParseMode.HTML
-        )
-        logger.info(f"📢 Пользователь {username} запросил ссылки для логирования в топике {thread_id} (чат {chat_id})")
+    # Кодируем chat_id и topic_id (если есть)
+    if thread_id:
+        encoded_logging_chat = encode_params(chat_id, str(thread_id))  # Кодируем с topic_id
     else:
-        await update.message.reply_text(
-            f"📌 <b>Логирование ошибок и предупреждений (Общий чат):</b>\n\n"
-            f"🔴 <b>Отправить ERROR-лог:</b>\n"
-            f"{SERVER_URL}/log/error/{encoded_general}\n\n"
-            f"🟡 <b>Отправить WARNING-лог:</b>\n"
-            f"{SERVER_URL}/log/warning/{encoded_general}\n\n"
-            f"📢 Эти ссылки будут использоваться для логирования в общем чате.",
-            parse_mode=ParseMode.HTML
-        )
-        logger.info(f"📢 Пользователь {username} запросил ссылки для логирования в General-чате {chat_id}")
+        encoded_logging_chat = encode_params(chat_id)  # Кодируем только chat_id
+
+    # Формируем ссылки для логирования
+    await update.message.reply_text(
+        f"📌 <b>Логирование ошибок и предупреждений:</b>\n\n"
+        f"🔴 <b>Отправить ERROR-лог:</b>\n"
+        f"{SERVER_URL}/log/error/{encoded_logging_chat}\n\n"
+        f"🟡 <b>Отправить WARNING-лог:</b>\n"
+        f"{SERVER_URL}/log/warning/{encoded_logging_chat}\n\n"
+        f"📢 Логи будут отправляться {'в этот топик' if thread_id else 'в этот чат'}.",
+        parse_mode=ParseMode.HTML
+    )
+
+    logger.info(f"📢 Пользователь {username} запросил ссылки для логирования в {'топике ' + str(thread_id) if thread_id else 'General-чате'} (чат {chat_id})")
+
 
 
 def run_flask():
