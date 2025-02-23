@@ -29,42 +29,20 @@ logger = logging.getLogger(__name__)
 
 # Отключаем детальные HTTP-запросы из логов
 logging.getLogger("httpx").setLevel(logging.WARNING)
-
-def get_logging_topic(chat_id, log_type):
-    """
-    Определяет, в какой топик отправлять ошибки (ERROR) и предупреждения (WARNING).
-    - Если чат поддерживает топики → отправляем в соответствующий топик
-    - Если топики нет → отправляем просто в чат
-    """
-    topic_map = {
-        "error": "ERROR_LOGS",  # Название топика для ошибок
-        "warning": "WARNING_LOGS"  # Название топика для предупреждений
-    }
-
-    try:
-        local_bot = Bot(token=TOKEN)
-        forum_topics = local_bot.get_forum_topics(chat_id)  # Получаем все топики
-
-        for topic in forum_topics:
-            if topic.title == topic_map.get(log_type.lower()):
-                return topic.message_thread_id  # Возвращаем ID нужного топика
-
-        return None  # Если нет нужного топика, отправляем просто в чат
-
-    except Exception as e:
-        logger.warning(f"⚠️ Ошибка при поиске топика логов ({log_type.upper()}): {str(e)}")
-        return None
     
 def log_and_notify(level, message):
     """
     Логирует сообщение и отправляет его в чат логирования.
-    
+
+    - Если бот работает в топике, лог отправится в этот же топик.
+    - Если бот работает в чате без топика, лог отправится просто в чат.
+
     level: уровень логирования (logging.ERROR, logging.WARNING)
     message: текст ошибки/предупреждения
     """
     # Логируем в файл
     log_type = "error" if level == logging.ERROR else "warning"
-    
+
     if level == logging.ERROR:
         logger.error(message)
     else:
@@ -76,11 +54,12 @@ def log_and_notify(level, message):
         logger.warning("⚠️ Логирование в Telegram отключено: LOGGING_CHAT_ID не задан.")
         return
 
-    # Получаем нужный топик (если есть поддержка топиков)
-    topic_id = get_logging_topic(logging_chat_id, log_type)
+    # Кодируем chat_id (и topic_id, если он есть)
+    encoded_logging_chat = encode_params(logging_chat_id)
 
     # Формируем текст сообщения
-    log_message = f"⚠️ <b>{log_type.upper()} LOG</b>\n📝 {message}"
+    log_label = "🔴 ERROR" if log_type == "error" else "🟡 WARNING"
+    log_message = f"{log_label}\n📝 {message}"
 
     # Отправляем в Telegram
     loop = asyncio.new_event_loop()
@@ -89,34 +68,36 @@ def log_and_notify(level, message):
     try:
         local_bot = Bot(token=TOKEN)
 
+        # Декодируем chat_id и topic_id, чтобы понять, есть ли топик
+        chat_id, topic_id = decode_params(encoded_logging_chat)
+
         if topic_id:
-            # Отправляем в соответствующий топик (ERROR_LOGS / WARNING_LOGS)
+            # Отправляем в тот же топик, если вызов был оттуда
             loop.run_until_complete(
                 local_bot.send_message(
-                    chat_id=logging_chat_id,
+                    chat_id=chat_id,
                     message_thread_id=topic_id,
                     text=log_message,
                     parse_mode=ParseMode.HTML
                 )
             )
-            logger.info(f"✅ Лог ({log_type.upper()}) отправлен в топик {topic_id} (чат {logging_chat_id})")
+            logger.info(f"✅ Лог ({log_type.upper()}) отправлен в тот же топик {topic_id} (чат {chat_id})")
         else:
-            # Если нет топиков, отправляем просто в чат
+            # Если вызов был из чата, отправляем в сам чат
             loop.run_until_complete(
                 local_bot.send_message(
-                    chat_id=logging_chat_id,
+                    chat_id=chat_id,
                     text=log_message,
                     parse_mode=ParseMode.HTML
                 )
             )
-            logger.info(f"✅ Лог ({log_type.upper()}) отправлен в чат {logging_chat_id}")
+            logger.info(f"✅ Лог ({log_type.upper()}) отправлен в чат {chat_id}")
 
     except Exception as e:
         logger.error(f"❌ Ошибка при отправке лога ({log_type.upper()}) в Telegram: {str(e)}")
 
     finally:
         loop.close()
-
 
 
 def format_json_as_html(data):
@@ -169,9 +150,6 @@ def format_json_as_html(data):
 
     logger.info(f"✅ JSON успешно преобразован в HTML, длина: {len(formatted_text)} символов")
     return formatted_text
-
-
-import base64
 
 def encode_params(chat_id, topic_id=None):
     """
@@ -455,13 +433,15 @@ def get_message_text(encoded_params, message_id):
 def log_message(log_type, encoded_chat):
     """
     Получает логи от Google Apps Script или других сервисов и отправляет их в нужный чат/топик.
+    - Если лог пришел из топика → он отправляется в этот же топик.
+    - Если топика нет → отправляем просто в чат.
     """
     # Игнорируем GET-запросы
     if request.method == "GET":
         logger.info(f"⚠️ Игнорируем GET-запрос на /log/{log_type}/{encoded_chat}")
         return jsonify({"error": "Method Not Allowed"}), 405
 
-    # Декодируем chat_id и topic_id
+    # Декодируем chat_id и topic_id (если он есть)
     chat_id, topic_id = decode_params(encoded_chat)
     if not chat_id:
         log_and_notify(logging.WARNING, f"⚠️ Ошибка декодирования chat_id ({encoded_chat})")
@@ -480,13 +460,10 @@ def log_message(log_type, encoded_chat):
     try:
         local_bot = Bot(token=TOKEN)
 
-        # Определяем топик (например, 'ERROR' или 'WARNING' могут быть разными топиками)
-        topic_id = get_logging_topic(chat_id, log_type.lower())  # 🔥 Получаем топик логов
+        # Если лог пришел из топика, отправляем его обратно в этот же топик
+        log_label = "🔴 ERROR" if log_type.lower() == "error" else "🟡 WARNING"
+        log_message_text = f"{log_label}\n📝 {log_text}"
 
-        # Формируем текст лога
-        log_message_text = f"⚠️ <b>{log_type.upper()}</b>\n📝 {log_text}"
-
-        # Отправляем лог в нужный чат / топик
         if topic_id:
             sent_message = loop.run_until_complete(
                 local_bot.send_message(
@@ -496,7 +473,7 @@ def log_message(log_type, encoded_chat):
                     parse_mode=ParseMode.HTML
                 )
             )
-            logger.info(f"✅ Лог ({log_type.upper()}) отправлен в топик {topic_id} (чат {chat_id})")
+            logger.info(f"✅ Лог ({log_type.upper()}) отправлен в тот же топик {topic_id} (чат {chat_id})")
         else:
             sent_message = loop.run_until_complete(
                 local_bot.send_message(
@@ -515,6 +492,9 @@ def log_message(log_type, encoded_chat):
 
     finally:
         loop.close()
+
+
+
 
 
 async def start(update, context: ContextTypes.DEFAULT_TYPE):
@@ -550,7 +530,6 @@ async def commands(update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"📩 Отправить в топик: \n{SERVER_URL}/post/{encoded_topic}\n"
             f"✏️ Редактировать сообщение: \n{SERVER_URL}/edit/{encoded_chat}/<message_id>\n"
-            f"🗑 Удалить сообщение: \n{SERVER_URL}/delete/{encoded_chat}/<message_id>\n"
             f"📄 Получить текст сообщения: \n{SERVER_URL}/get/{encoded_chat}/<message_id>\n"
         )
         logger.info(f"📢 Пользователь {username} запросил ссылки для топика {thread_id} в чате {chat_id}")
@@ -565,23 +544,44 @@ async def commands(update, context: ContextTypes.DEFAULT_TYPE):
 
 async def logging_commands(update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Отправляет ссылки для логирования.
+    Отправляет ссылки для логирования ошибок и предупреждений.
+    Учитывает топики, если они есть в чате.
     """
     if not update.message:
         return
 
     user = update.effective_user
     chat_id = str(update.message.chat_id)
-    username = f"@{user.username}" if user.username else f"{user.first_name} {user.last_name or ''}".strip()
+    thread_id = update.message.message_thread_id  # Проверяем, в топике ли сообщение
+    username = f"@{user.username}" if user.username else f"{user.full_name or 'Без имени'}"
 
-    encoded_chat = encode_params(chat_id)
+    # Кодируем chat_id и topic_id для логирования
+    encoded_general = encode_params(chat_id)  # Логирование в основной чат
+    encoded_topic = encode_params(chat_id, str(thread_id)) if thread_id else None  # Логирование в топик
 
-    await update.message.reply_text(
-        f"📩 Логирование ошибок и предупреждений:\n"
-        f"🔴 **Отправить ERROR-лог**: {SERVER_URL}/log/error/{encoded_chat}\n"
-        f"🟡 **Отправить WARNING-лог**: {SERVER_URL}/log/warning/{encoded_chat}\n"
-    )
-    logger.info(f"📢 Пользователь {username} запросил ссылки для логирования в чате {chat_id}")
+    if encoded_topic:
+        await update.message.reply_text(
+            f"📌 <b>Логирование ошибок и предупреждений (Топик):</b>\n\n"
+            f"🔴 <b>Отправить ERROR-лог:</b>\n"
+            f"{SERVER_URL}/log/error/{encoded_topic}\n\n"
+            f"🟡 <b>Отправить WARNING-лог:</b>\n"
+            f"{SERVER_URL}/log/warning/{encoded_topic}\n\n"
+            f"📢 Эти ссылки будут использоваться для логирования в текущем топике.",
+            parse_mode=ParseMode.HTML
+        )
+        logger.info(f"📢 Пользователь {username} запросил ссылки для логирования в топике {thread_id} (чат {chat_id})")
+    else:
+        await update.message.reply_text(
+            f"📌 <b>Логирование ошибок и предупреждений (Общий чат):</b>\n\n"
+            f"🔴 <b>Отправить ERROR-лог:</b>\n"
+            f"{SERVER_URL}/log/error/{encoded_general}\n\n"
+            f"🟡 <b>Отправить WARNING-лог:</b>\n"
+            f"{SERVER_URL}/log/warning/{encoded_general}\n\n"
+            f"📢 Эти ссылки будут использоваться для логирования в общем чате.",
+            parse_mode=ParseMode.HTML
+        )
+        logger.info(f"📢 Пользователь {username} запросил ссылки для логирования в General-чате {chat_id}")
+
 
 def run_flask():
     app.run(host="0.0.0.0", port=PORT)
