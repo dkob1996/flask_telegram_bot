@@ -30,17 +30,17 @@ logger = logging.getLogger(__name__)
 # Отключаем детальные HTTP-запросы из логов
 logging.getLogger("httpx").setLevel(logging.WARNING)
     
-def log_and_notify(level, message):
+import traceback
+
+def log_and_notify(level, message, chat_id=None, topic_id=None):
     """
-    Логирует сообщение и отправляет его в чат логирования.
-
-    - Если бот работает в топике, лог отправится в этот же топик.
-    - Если бот работает в чате без топика, лог отправится просто в чат.
-
+    Логирует сообщение и отправляет его в тот же чат или топик, где произошла ошибка.
+    
     level: уровень логирования (logging.ERROR, logging.WARNING)
     message: текст ошибки/предупреждения
+    chat_id: ID чата (если известен)
+    topic_id: ID топика (если известен)
     """
-    # Логируем в файл
     log_type = "error" if level == logging.ERROR else "warning"
 
     if level == logging.ERROR:
@@ -48,31 +48,22 @@ def log_and_notify(level, message):
     else:
         logger.warning(message)
 
-    # Определяем, куда отправлять логи
-    logging_chat_id = os.environ.get("LOGGING_CHAT_ID")  # Чат для логирования
-    if not logging_chat_id:
-        logger.warning("⚠️ Логирование в Telegram отключено: LOGGING_CHAT_ID не задан.")
+    # Если chat_id неизвестен, логируем только в консоль
+    if not chat_id:
+        logger.warning("⚠️ Логирование в Telegram пропущено: chat_id не задан.")
         return
 
-    # Кодируем chat_id (и topic_id, если он есть)
-    encoded_logging_chat = encode_params(logging_chat_id)
-
-    # Формируем текст сообщения
     log_label = "🔴 ERROR" if log_type == "error" else "🟡 WARNING"
     log_message = f"{log_label}\n📝 {message}"
 
-    # Отправляем в Telegram
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
     try:
         local_bot = Bot(token=TOKEN)
 
-        # Декодируем chat_id и topic_id, чтобы понять, есть ли топик
-        chat_id, topic_id = decode_params(encoded_logging_chat)
-
         if topic_id:
-            # Отправляем в тот же топик, если вызов был оттуда
+            # Если есть топик, отправляем в этот топик
             loop.run_until_complete(
                 local_bot.send_message(
                     chat_id=chat_id,
@@ -81,9 +72,9 @@ def log_and_notify(level, message):
                     parse_mode=ParseMode.HTML
                 )
             )
-            logger.info(f"✅ Лог ({log_type.upper()}) отправлен в тот же топик {topic_id} (чат {chat_id})")
+            logger.info(f"✅ Лог ({log_type.upper()}) отправлен в топик {topic_id} (чат {chat_id})")
         else:
-            # Если вызов был из чата, отправляем в сам чат
+            # Если топика нет, отправляем в сам чат
             loop.run_until_complete(
                 local_bot.send_message(
                     chat_id=chat_id,
@@ -106,7 +97,7 @@ def format_json_as_html(data):
     Убирает пустые строки, None и форматирует вложенные структуры.
     """
     if not data:
-        log_and_notify(logging.WARNING, "⚠️ Пустой JSON передан в format_json_as_html()")
+        logger.info("⚠️ Пустой JSON передан в format_json_as_html()")
         return ""
 
     if "text" in data and isinstance(data["text"], str) and data["text"].strip():
@@ -145,7 +136,7 @@ def format_json_as_html(data):
     formatted_text = formatted_text.strip()
 
     if not formatted_text:
-        log_and_notify(logging.WARNING, "⚠️ JSON содержит только пустые значения!")
+        logger.info("⚠️ JSON содержит только пустые значения!")
         return ""
 
     logger.info(f"✅ JSON успешно преобразован в HTML, длина: {len(formatted_text)} символов")
@@ -175,7 +166,7 @@ def encode_params(chat_id, topic_id=None):
 
     except Exception as e:
         error_message = f"❌ Ошибка кодирования: chat_id={chat_id}, topic_id={topic_id if topic_id else 'None'} → {str(e)}"
-        log_and_notify(logging.ERROR, error_message)
+        log_and_notify(logging.ERROR, error_message, chat_id, topic_id)
         return None
 
 
@@ -187,7 +178,7 @@ def decode_params(encoded_string):
     - В случае ошибки логирует проблему и возвращает (None, None).
     """
     if not encoded_string:
-        log_and_notify(logging.WARNING, "⚠️ Пустая строка передана в decode_params()")
+        log_and_notify(logging.WARNING, "⚠️ Пустая строка передана в decode_params()", chat_id, topic_id)
         return None, None
 
     try:
@@ -209,7 +200,7 @@ def decode_params(encoded_string):
 
     except Exception as e:
         error_message = f"❌ Ошибка декодирования Base64 ({encoded_string}): {str(e)}"
-        log_and_notify(logging.ERROR, error_message)
+        log_and_notify(logging.ERROR, error_message, chat_id, topic_id)
         return None, None
 
 
@@ -227,13 +218,13 @@ def post_to_chat(encoded_params):
     # Декодируем chat_id и topic_id
     chat_id, topic_id = decode_params(encoded_params)
     if not chat_id:
-        log_and_notify(logging.WARNING, f"⚠️ Ошибка декодирования: некорректные параметры ({encoded_params})")
+        log_and_notify(logging.WARNING, f"⚠️ Ошибка декодирования: некорректные параметры ({encoded_params})", chat_id, topic_id)
         return jsonify({"error": "Invalid parameters"}), 400
 
     # Получаем JSON-данные
     data = request.get_json()
     if not data:
-        log_and_notify(logging.WARNING, f"⚠️ Ошибка отправки: пустой JSON (chat_id={chat_id})")
+        log_and_notify(logging.WARNING, f"⚠️ Ошибка отправки: пустой JSON (chat_id={chat_id})", chat_id, topic_id)
         return jsonify({"error": "Invalid JSON"}), 400
 
     message = format_json_as_html(data)
@@ -244,7 +235,7 @@ def post_to_chat(encoded_params):
         if topic_id.isdigit():
             thread_id = int(topic_id)
         else:
-            log_and_notify(logging.WARNING, f"⚠️ Некорректный topic_id '{topic_id}' (chat_id={chat_id})")
+            log_and_notify(logging.WARNING, f"⚠️ Некорректный topic_id '{topic_id}' (chat_id={chat_id})", chat_id, topic_id)
             return jsonify({"error": "Invalid topic_id"}), 400
 
     loop = asyncio.new_event_loop()
@@ -273,7 +264,7 @@ def post_to_chat(encoded_params):
         })
 
     except Exception as e:
-        log_and_notify(logging.ERROR, f"❌ Ошибка при отправке сообщения в чат {chat_id}: {str(e)}")
+        log_and_notify(logging.ERROR, f"❌ Ошибка при отправке сообщения в чат {chat_id}: {str(e)}", chat_id, topic_id)
         return jsonify({"error": str(e)}), 500
 
     finally:
@@ -293,18 +284,18 @@ def edit_message(encoded_params, message_id):
     # Декодируем chat_id (topic_id не используется)
     chat_id, _ = decode_params(encoded_params)
     if not chat_id:
-        log_and_notify(logging.WARNING, f"⚠️ Ошибка декодирования: некорректные параметры ({encoded_params})")
+        log_and_notify(logging.WARNING, f"⚠️ Ошибка декодирования: некорректные параметры ({encoded_params})", chat_id, None)
         return jsonify({"error": "Invalid parameters"}), 400
 
     # Проверяем message_id
     if not message_id.isdigit():
-        log_and_notify(logging.WARNING, f"⚠️ Некорректный message_id '{message_id}' (chat_id={chat_id})")
+        log_and_notify(logging.WARNING, f"⚠️ Некорректный message_id '{message_id}' (chat_id={chat_id})", chat_id, None)
         return jsonify({"error": "Invalid message_id"}), 400
 
     # Получаем JSON-данные
     data = request.get_json()
     if not data or "text" not in data:
-        log_and_notify(logging.WARNING, f"⚠️ Ошибка редактирования: отсутствует 'text' (message_id={message_id}, chat_id={chat_id})")
+        log_and_notify(logging.WARNING, f"⚠️ Ошибка редактирования: отсутствует 'text' (message_id={message_id}, chat_id={chat_id})", chat_id, None)
         return jsonify({"error": "Invalid JSON, 'text' is required"}), 400
 
     new_message = format_json_as_html(data)
@@ -326,7 +317,7 @@ def edit_message(encoded_params, message_id):
         return jsonify({"success": "Message edited", "message_id": message_id})
 
     except Exception as e:
-        log_and_notify(logging.ERROR, f"❌ Ошибка при редактировании сообщения {message_id} в чате {chat_id}: {str(e)}")
+        log_and_notify(logging.ERROR, f"❌ Ошибка при редактировании сообщения {message_id} в чате {chat_id}: {str(e)}", chat_id, None)
         return jsonify({"error": str(e)}), 500
 
     finally:
@@ -346,12 +337,12 @@ def delete_message(encoded_params, message_id):
     # Декодируем chat_id (topic_id не используется)
     chat_id, _ = decode_params(encoded_params)
     if not chat_id:
-        log_and_notify(logging.WARNING, f"⚠️ Ошибка декодирования: некорректные параметры ({encoded_params})")
+        log_and_notify(logging.WARNING, f"⚠️ Ошибка декодирования: некорректные параметры ({encoded_params})", chat_id, None)
         return jsonify({"error": "Invalid parameters"}), 400
 
     # Проверяем message_id
     if not message_id.isdigit():
-        log_and_notify(logging.WARNING, f"⚠️ Некорректный message_id '{message_id}' (chat_id={chat_id})")
+        log_and_notify(logging.WARNING, f"⚠️ Некорректный message_id '{message_id}' (chat_id={chat_id})", chat_id, None)
         return jsonify({"error": "Invalid message_id"}), 400
 
     loop = asyncio.new_event_loop()
@@ -371,10 +362,10 @@ def delete_message(encoded_params, message_id):
     except Exception as e:
         error_message = str(e)
         if "message to delete not found" in error_message:
-            log_and_notify(logging.WARNING, f"⚠️ Сообщение {message_id} уже удалено или не найдено в чате {chat_id}.")
+            log_and_notify(logging.WARNING, f"⚠️ Сообщение {message_id} уже удалено или не найдено в чате {chat_id}.", chat_id, None)
             return jsonify({"warning": f"Message {message_id} already deleted or not found"}), 200
         else:
-            log_and_notify(logging.ERROR, f"❌ Ошибка при удалении сообщения {message_id} в чате {chat_id}: {error_message}")
+            log_and_notify(logging.ERROR, f"❌ Ошибка при удалении сообщения {message_id} в чате {chat_id}: {error_message}", chat_id, None)
             return jsonify({"error": error_message}), 500
 
     finally:
@@ -389,12 +380,12 @@ def get_message_text(encoded_params, message_id):
     # Декодируем chat_id (topic_id не используется)
     chat_id, _ = decode_params(encoded_params)
     if not chat_id:
-        log_and_notify(logging.WARNING, f"⚠️ Ошибка декодирования: некорректные параметры ({encoded_params})")
+        log_and_notify(logging.WARNING, f"⚠️ Ошибка декодирования: некорректные параметры ({encoded_params})", chat_id, None)
         return jsonify({"error": "Invalid parameters"}), 400
 
     # Проверяем message_id
     if not message_id.isdigit():
-        log_and_notify(logging.WARNING, f"⚠️ Некорректный message_id '{message_id}' (chat_id={chat_id})")
+        log_and_notify(logging.WARNING, f"⚠️ Некорректный message_id '{message_id}' (chat_id={chat_id})", chat_id, None)
         return jsonify({"error": "Invalid message_id"}), 400
 
     loop = asyncio.new_event_loop()
@@ -407,22 +398,22 @@ def get_message_text(encoded_params, message_id):
         chat = loop.run_until_complete(local_bot.get_chat(chat_id))
 
         if not chat:
-            log_and_notify(logging.WARNING, f"⚠️ Чат {chat_id} не найден.")
+            log_and_notify(logging.WARNING, f"⚠️ Чат {chat_id} не найден.", chat_id, None)
             return jsonify({"error": "Chat not found"}), 404
 
         # Здесь нужно использовать правильный API метод, forward_message не подходит
         message_text = f"⚠️ Получение сообщения {message_id} невозможно через API."  
-        log_and_notify(logging.WARNING, f"⚠️ API Telegram не позволяет получить текст сообщения {message_id}.")
+        log_and_notify(logging.WARNING, f"⚠️ API Telegram не позволяет получить текст сообщения {message_id}.", chat_id, None)
 
         return jsonify({"text": message_text})
 
     except Exception as e:
         error_message = str(e)
         if "message to get not found" in error_message:
-            log_and_notify(logging.WARNING, f"⚠️ Сообщение {message_id} не найдено в чате {chat_id}")
+            log_and_notify(logging.WARNING, f"⚠️ Сообщение {message_id} не найдено в чате {chat_id}", chat_id, None)
             return jsonify({"error": "Message not found"}), 404
         else:
-            log_and_notify(logging.ERROR, f"❌ Ошибка при получении текста сообщения {message_id} в чате {chat_id}: {error_message}")
+            log_and_notify(logging.ERROR, f"❌ Ошибка при получении текста сообщения {message_id} в чате {chat_id}: {error_message}", chat_id, None)
             return jsonify({"error": error_message}), 500
 
     finally:
@@ -444,13 +435,13 @@ def log_message(log_type, encoded_chat):
     # Декодируем chat_id и topic_id (если он есть)
     chat_id, topic_id = decode_params(encoded_chat)
     if not chat_id:
-        log_and_notify(logging.WARNING, f"⚠️ Ошибка декодирования chat_id ({encoded_chat})")
+        log_and_notify(logging.WARNING, f"⚠️ Ошибка декодирования chat_id ({encoded_chat})", chat_id, topic_id)
         return jsonify({"error": "Invalid parameters"}), 400
 
     # Получаем JSON-данные
     data = request.get_json()
     if not data or "message" not in data:
-        log_and_notify(logging.WARNING, f"⚠️ Ошибка логирования: пустой JSON (chat_id={chat_id})")
+        log_and_notify(logging.WARNING, f"⚠️ Ошибка логирования: пустой JSON (chat_id={chat_id})", chat_id, topic_id)
         return jsonify({"error": "Invalid JSON, 'message' is required"}), 400
 
     log_text = format_json_as_html(data)
@@ -487,7 +478,7 @@ def log_message(log_type, encoded_chat):
         return jsonify({"success": "Log sent", "message_id": sent_message.message_id})
 
     except Exception as e:
-        log_and_notify(logging.ERROR, f"❌ Ошибка при отправке лога ({log_type.upper()}) в чат {chat_id}: {str(e)}")
+        log_and_notify(logging.ERROR, f"❌ Ошибка при отправке лога ({log_type.upper()}) в чат {chat_id}: {str(e)}", chat_id, topic_id)
         return jsonify({"error": str(e)}), 500
 
     finally:
@@ -498,14 +489,26 @@ async def start(update, context: ContextTypes.DEFAULT_TYPE):
     """
     Показывает доступные команды.
     """
-    await update.message.reply_text(
-        "👋 Привет! Вот доступные команды:\n\n"
-        "📌 <b>Основные команды:</b>\n"
-        "🔹 /commands - команды для работы с сообщениями\n"
-        "🔹 /logging_commands - команды для логирования\n",
-        parse_mode=ParseMode.HTML
-    )
-    logger.info(f"📢 Пользователь @{update.effective_user.username} вызвал /start")
+    if not update.message:
+        return  # Предотвращаем ошибку, если сообщение отсутствует (например, callback-запрос)
+
+    user = update.effective_user
+    chat_id = str(update.message.chat_id)
+    thread_id = update.message.message_thread_id  # Может быть None
+
+    try:
+        await update.message.reply_text(
+            "👋 Привет! Вот доступные команды:\n\n"
+            "📌 <b>Основные команды:</b>\n"
+            "🔹 /commands - команды для работы с сообщениями\n"
+            "🔹 /logging_commands - команды для логирования\n",
+            parse_mode=ParseMode.HTML
+        )
+        logger.info(f"📢 Пользователь @{user.username} вызвал /start")
+        raise ValueError("💥 Искусственная ошибка для тестирования логирования!")
+    except Exception as e:
+        log_and_notify(logging.ERROR, f"❌ Ошибка в start: {str(e)}", chat_id, thread_id)
+
 
 async def commands(update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -522,22 +525,26 @@ async def commands(update, context: ContextTypes.DEFAULT_TYPE):
     encoded_general = encode_params(chat_id, "general")
     encoded_topic = encode_params(chat_id, str(thread_id)) if thread_id else None
     encoded_chat = encode_params(chat_id)
-
-    if encoded_topic:
-        await update.message.reply_text(
-            f"📩 Отправить в топик: \n{SERVER_URL}/post/{encoded_topic}\n"
-            f"✏️ Редактировать сообщение: \n{SERVER_URL}/edit/{encoded_chat}/<message_id>\n"
-            f"📄 Получить текст сообщения: \n{SERVER_URL}/get/{encoded_chat}/<message_id>\n"
-        )
-        logger.info(f"📢 Пользователь {username} запросил ссылки для топика {thread_id} в чате {chat_id}")
-    else:
-        await update.message.reply_text(
-            f"📩 Отправить в общий чат: \n{SERVER_URL}/post/{encoded_general}\n"
-            f"✏️ Редактировать: \n{SERVER_URL}/edit/{encoded_chat}/<message_id>\n"
-            f"🗑 Удалить сообщение: \n{SERVER_URL}/delete/{encoded_chat}/<message_id>\n"
-            f"📄 Получить текст сообщения: \n{SERVER_URL}/get/{encoded_chat}/<message_id>\n"
-        )
-        logger.info(f"📢 Пользователь {username} запросил ссылки для General-чата {chat_id}")
+    
+    try:
+        if encoded_topic:
+            await update.message.reply_text(
+                f"📩 Отправить в топик: \n{SERVER_URL}/post/{encoded_topic}\n"
+                f"✏️ Редактировать сообщение: \n{SERVER_URL}/edit/{encoded_chat}/<message_id>\n"
+                f"📄 Получить текст сообщения: \n{SERVER_URL}/get/{encoded_chat}/<message_id>\n"
+            )
+            logger.info(f"📢 Пользователь {username} запросил ссылки для топика {thread_id} в чате {chat_id}")
+        else:
+            await update.message.reply_text(
+                f"📩 Отправить в общий чат: \n{SERVER_URL}/post/{encoded_general}\n"
+                f"✏️ Редактировать: \n{SERVER_URL}/edit/{encoded_chat}/<message_id>\n"
+                f"🗑 Удалить сообщение: \n{SERVER_URL}/delete/{encoded_chat}/<message_id>\n"
+                f"📄 Получить текст сообщения: \n{SERVER_URL}/get/{encoded_chat}/<message_id>\n"
+            )
+            logger.info(f"📢 Пользователь {username} запросил ссылки для General-чата {chat_id}")
+            raise ValueError("💥 Искусственная ошибка для тестирования логирования!")
+    except Exception as e:
+        log_and_notify(logging.ERROR, f"❌ Ошибка в сommands: {str(e)}", chat_id, thread_id)
 
 async def logging_commands(update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -545,21 +552,21 @@ async def logging_commands(update, context: ContextTypes.DEFAULT_TYPE):
     Если вызвано в топике, логирование будет в этот же топик.
     Если вызвано в общем чате, логирование будет в сам чат.
     """
+    if not update.message:
+        return
+
+    user = update.effective_user
+    chat_id = str(update.message.chat_id)
+    thread_id = update.message.message_thread_id  # Определяем, в топике ли сообщение
+    username = f"@{user.username}" if user.username else f"{user.full_name or 'Без имени'}"
+
+    # Кодируем chat_id и topic_id (если есть)
+    if thread_id:
+        encoded_logging_chat = encode_params(chat_id, str(thread_id))  # Кодируем с topic_id
+    else:
+        encoded_logging_chat = encode_params(chat_id)  # Кодируем только chat_id
+
     try:
-        if not update.message:
-            return
-
-        user = update.effective_user
-        chat_id = str(update.message.chat_id)
-        thread_id = update.message.message_thread_id  # Определяем, в топике ли сообщение
-        username = f"@{user.username}" if user.username else f"{user.full_name or 'Без имени'}"
-
-        # Кодируем chat_id и topic_id (если есть)
-        if thread_id:
-            encoded_logging_chat = encode_params(chat_id, str(thread_id))  # Кодируем с topic_id
-        else:
-            encoded_logging_chat = encode_params(chat_id)  # Кодируем только chat_id
-
         # Формируем ссылки для логирования
         await update.message.reply_text(
             f"📌 <b>Логирование ошибок и предупреждений:</b>\n\n"
@@ -575,7 +582,7 @@ async def logging_commands(update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"📢 Пользователь {username} запросил ссылки для логирования в {'топике ' + str(thread_id) if thread_id else 'General-чате'} (чат {chat_id})")
         raise ValueError("💥 Искусственная ошибка для тестирования логирования!")
     except Exception as e:
-        log_and_notify(logging.ERROR, f"❌ Ошибка в logging_commands: {str(e)}")
+        log_and_notify(logging.ERROR, f"❌ Ошибка в logging_commands: {str(e)}", chat_id, thread_id)
 
 
 def run_flask():
