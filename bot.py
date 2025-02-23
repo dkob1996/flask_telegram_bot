@@ -29,10 +29,7 @@ logger = logging.getLogger(__name__)
 
 # Отключаем детальные HTTP-запросы из логов
 logging.getLogger("httpx").setLevel(logging.WARNING)
-    
-import traceback
 
-import asyncio
 
 def log_and_notify(level, message, chat_id=None, topic_id=None):
     """
@@ -59,35 +56,45 @@ def log_and_notify(level, message, chat_id=None, topic_id=None):
     log_message = f"{log_label}\n📝 {message}"
 
     try:
-        loop = asyncio.get_running_loop()  # Проверяем, есть ли активный event loop
-    except RuntimeError:
-        loop = asyncio.new_event_loop()  # Если нет активного loop, создаем новый
-        asyncio.set_event_loop(loop)
+        # Получаем текущий event loop
+        loop = asyncio.get_event_loop()
 
-    try:
+        # Создаем экземпляр бота
         local_bot = Bot(token=TOKEN)
 
-        if topic_id:
-            # Если есть топик, отправляем в этот топик
-            loop.run_until_complete(
-                local_bot.send_message(
+        # Если event loop уже запущен, используем ensure_future
+        if loop.is_running():
+            if topic_id:
+                # Если topic_id есть, отправляем в топик
+                future = asyncio.ensure_future(local_bot.send_message(
                     chat_id=chat_id,
                     message_thread_id=topic_id,
                     text=log_message,
                     parse_mode=ParseMode.HTML
-                )
-            )
-            logger.info(f"✅ Лог ({log_type.upper()}) отправлен в топик {topic_id} (чат {chat_id})")
-        else:
-            # Если топика нет, отправляем в сам чат
-            loop.run_until_complete(
-                local_bot.send_message(
+                ))
+            else:
+                # Если topic_id нет, отправляем просто в чат
+                future = asyncio.ensure_future(local_bot.send_message(
                     chat_id=chat_id,
                     text=log_message,
                     parse_mode=ParseMode.HTML
-                )
-            )
-            logger.info(f"✅ Лог ({log_type.upper()}) отправлен в чат {chat_id}")
+                ))
+            future.add_done_callback(lambda fut: logger.info(f"✅ Лог ({log_type.upper()}) отправлен в чат {chat_id}"))
+        else:
+            # Если event loop не работает, используем run_until_complete
+            if topic_id:
+                loop.run_until_complete(local_bot.send_message(
+                    chat_id=chat_id,
+                    message_thread_id=topic_id,
+                    text=log_message,
+                    parse_mode=ParseMode.HTML
+                ))
+            else:
+                loop.run_until_complete(local_bot.send_message(
+                    chat_id=chat_id,
+                    text=log_message,
+                    parse_mode=ParseMode.HTML
+                ))
 
     except Exception as e:
         logger.error(f"❌ Ошибка при отправке лога ({log_type.upper()}) в Telegram: {str(e)}")
