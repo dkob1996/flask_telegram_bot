@@ -532,22 +532,19 @@ async def start(update, context: ContextTypes.DEFAULT_TYPE):
 
 async def commands(update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Отправляет ссылки для отправки, редактирования, удаления и получения сообщений.
-    Теперь chat_id и topic_id передаются в Base64.
-    - Отправка: chat_id + topic_id (только для сообщений)
-    - Изменение/удаление/получение: только chat_id (единый формат для General и топиков)
+    Отправляет ссылки для работы с сообщениями.
     """
+    if not update.message:
+        return  # Предотвращаем ошибку, если сообщение отсутствует (например, callback-запрос)
+
     user = update.effective_user
     chat_id = str(update.message.chat_id)
     thread_id = update.message.message_thread_id
     username = f"@{user.username}" if user.username else f"{user.first_name} {user.last_name or ''}".strip()
 
-    # Кодируем chat_id и topic_id для отправки сообщений
-    encoded_general = encode_params(chat_id, "general")  # Для General-чата
-    encoded_topic = encode_params(chat_id, str(thread_id)) if thread_id else None  # Для топика
-
-    # Кодируем chat_id отдельно для удаления, редактирования, получения текста
-    encoded_chat = encode_params(chat_id)  # Единый код для General и топиков
+    encoded_general = encode_params(chat_id, "general")
+    encoded_topic = encode_params(chat_id, str(thread_id)) if thread_id else None
+    encoded_chat = encode_params(chat_id)
 
     if encoded_topic:
         await update.message.reply_text(
@@ -568,14 +565,15 @@ async def commands(update, context: ContextTypes.DEFAULT_TYPE):
 
 async def logging_commands(update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Отправляет ссылки для логирования ошибок и предупреждений.
-    Внешний ресурс сможет использовать эти ссылки.
+    Отправляет ссылки для логирования.
     """
+    if not update.message:
+        return
+
     user = update.effective_user
     chat_id = str(update.message.chat_id)
     username = f"@{user.username}" if user.username else f"{user.first_name} {user.last_name or ''}".strip()
 
-    # Кодируем chat_id
     encoded_chat = encode_params(chat_id)
 
     await update.message.reply_text(
@@ -583,9 +581,12 @@ async def logging_commands(update, context: ContextTypes.DEFAULT_TYPE):
         f"🔴 **Отправить ERROR-лог**: {SERVER_URL}/log/error/{encoded_chat}\n"
         f"🟡 **Отправить WARNING-лог**: {SERVER_URL}/log/warning/{encoded_chat}\n"
     )
-
     logger.info(f"📢 Пользователь {username} запросил ссылки для логирования в чате {chat_id}")
 
+application = Application.builder().token(TOKEN).build()
+application.add_handler(CommandHandler("commands", commands))
+application.add_handler(CommandHandler("logging_commands", logging_commands))
+application.add_handler(CommandHandler("start", start))
 
 def run_flask():
     app.run(host="0.0.0.0", port=PORT)
