@@ -32,6 +32,8 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
     
 import traceback
 
+import asyncio
+
 def log_and_notify(level, message, chat_id=None, topic_id=None):
     """
     Логирует сообщение и отправляет его в тот же чат или топик, где произошла ошибка.
@@ -56,8 +58,11 @@ def log_and_notify(level, message, chat_id=None, topic_id=None):
     log_label = "🔴 ERROR" if log_type == "error" else "🟡 WARNING"
     log_message = f"{log_label}\n📝 {message}"
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    try:
+        loop = asyncio.get_running_loop()  # Проверяем, есть ли активный event loop
+    except RuntimeError:
+        loop = asyncio.new_event_loop()  # Если нет активного loop, создаем новый
+        asyncio.set_event_loop(loop)
 
     try:
         local_bot = Bot(token=TOKEN)
@@ -87,8 +92,6 @@ def log_and_notify(level, message, chat_id=None, topic_id=None):
     except Exception as e:
         logger.error(f"❌ Ошибка при отправке лога ({log_type.upper()}) в Telegram: {str(e)}")
 
-    finally:
-        loop.close()
 
 
 def format_json_as_html(data):
@@ -542,7 +545,7 @@ async def commands(update, context: ContextTypes.DEFAULT_TYPE):
                 f"📄 Получить текст сообщения: \n{SERVER_URL}/get/{encoded_chat}/<message_id>\n"
             )
             logger.info(f"📢 Пользователь {username} запросил ссылки для General-чата {chat_id}")
-            raise ValueError("💥 Искусственная ошибка для тестирования логирования!")
+        raise ValueError("💥 Искусственная ошибка для тестирования логирования!")
     except Exception as e:
         log_and_notify(logging.ERROR, f"❌ Ошибка в сommands: {str(e)}", chat_id, thread_id)
 
