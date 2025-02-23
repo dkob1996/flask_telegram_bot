@@ -545,35 +545,37 @@ async def logging_commands(update, context: ContextTypes.DEFAULT_TYPE):
     Если вызвано в топике, логирование будет в этот же топик.
     Если вызвано в общем чате, логирование будет в сам чат.
     """
-    raise ValueError("💥 Искусственная ошибка для тестирования логирования!")
-    if not update.message:
-        return
+    try:
+        if not update.message:
+            return
 
-    user = update.effective_user
-    chat_id = str(update.message.chat_id)
-    thread_id = update.message.message_thread_id  # Определяем, в топике ли сообщение
-    username = f"@{user.username}" if user.username else f"{user.full_name or 'Без имени'}"
+        user = update.effective_user
+        chat_id = str(update.message.chat_id)
+        thread_id = update.message.message_thread_id  # Определяем, в топике ли сообщение
+        username = f"@{user.username}" if user.username else f"{user.full_name or 'Без имени'}"
 
-    # Кодируем chat_id и topic_id (если есть)
-    if thread_id:
-        encoded_logging_chat = encode_params(chat_id, str(thread_id))  # Кодируем с topic_id
-    else:
-        encoded_logging_chat = encode_params(chat_id)  # Кодируем только chat_id
+        # Кодируем chat_id и topic_id (если есть)
+        if thread_id:
+            encoded_logging_chat = encode_params(chat_id, str(thread_id))  # Кодируем с topic_id
+        else:
+            encoded_logging_chat = encode_params(chat_id)  # Кодируем только chat_id
 
-    # Формируем ссылки для логирования
-    await update.message.reply_text(
-        f"📌 <b>Логирование ошибок и предупреждений:</b>\n\n"
-        f"🔴 <b>Отправить ERROR-лог:</b>\n"
-        f"{SERVER_URL}/log/error/{encoded_logging_chat}\n\n"
-        f"🟡 <b>Отправить WARNING-лог:</b>\n"
-        f"{SERVER_URL}/log/warning/{encoded_logging_chat}\n\n"
-        f"📢 Логи будут отправляться {'в этот топик' if thread_id else 'в этот чат'}.",
-        parse_mode=ParseMode.HTML
-    )
+        # Формируем ссылки для логирования
+        await update.message.reply_text(
+            f"📌 <b>Логирование ошибок и предупреждений:</b>\n\n"
+            f"🔴 <b>Отправить ERROR-лог:</b>\n"
+            f"{SERVER_URL}/log/error/{encoded_logging_chat}\n\n"
+            f"🟡 <b>Отправить WARNING-лог:</b>\n"
+            f"{SERVER_URL}/log/warning/{encoded_logging_chat}\n\n"
+            f"📢 Логи будут отправляться {'в этот топик' if thread_id else 'в этот чат'}.",
+            parse_mode=ParseMode.HTML
+        )
 
 
-    logger.info(f"📢 Пользователь {username} запросил ссылки для логирования в {'топике ' + str(thread_id) if thread_id else 'General-чате'} (чат {chat_id})")
-
+        logger.info(f"📢 Пользователь {username} запросил ссылки для логирования в {'топике ' + str(thread_id) if thread_id else 'General-чате'} (чат {chat_id})")
+        raise ValueError("💥 Искусственная ошибка для тестирования логирования!")
+    except Exception as e:
+        log_and_notify(logging.ERROR, f"❌ Ошибка в logging_commands: {str(e)}")
 
 
 def run_flask():
