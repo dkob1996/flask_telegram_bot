@@ -583,11 +583,6 @@ async def logging_commands(update, context: ContextTypes.DEFAULT_TYPE):
     )
     logger.info(f"📢 Пользователь {username} запросил ссылки для логирования в чате {chat_id}")
 
-application = Application.builder().token(TOKEN).build()
-application.add_handler(CommandHandler("commands", commands))
-application.add_handler(CommandHandler("logging_commands", logging_commands))
-application.add_handler(CommandHandler("start", start))
-
 def run_flask():
     app.run(host="0.0.0.0", port=PORT)
 
@@ -596,5 +591,7 @@ if __name__ == "__main__":
     flask_thread.start()
 
     application = Application.builder().token(TOKEN).build()
+    application.add_handler(CommandHandler("commands", commands))
+    application.add_handler(CommandHandler("logging_commands", logging_commands))
     application.add_handler(CommandHandler("start", start))
     application.run_polling()
