@@ -169,7 +169,7 @@ pip install -r requirements.txt
 
 * `RAILWAY_PUBLIC_DOMAIN` – домен, который Railway выдаст для вашего приложения.
 
-### Файл Procfile
+### Procfile
 
 Файл Procfile используется для запуска бота на Railway:
 ```makefile

@@ -6,7 +6,7 @@
 - [Used Libraries](#c-used-libraries)
 - [Creating a Bot in BotFather](#d-creating-a-bot-in-botfather)
 - [Deployment on RailwayApp](#e-deployment-on-railwayapp)
-- Extra: [Readme on Russian language](https://github.com/dkob1996/flask_telegram_bot/blob/main/readme_ru.md)
+- Extra: [Readme on Russian language](https://github.com/dkob1996/flask_telegram_bot/blob/main/README_RU.md)
 
 ## A. Project Description
 
