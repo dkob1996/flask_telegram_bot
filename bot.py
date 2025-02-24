@@ -535,24 +535,21 @@ async def commands(update, context: ContextTypes.DEFAULT_TYPE):
     encoded_topic = encode_params(chat_id, str(thread_id)) if thread_id else None
     encoded_chat = encode_params(chat_id)
     
-    try:
-        if encoded_topic:
-            await update.message.reply_text(
-                f"📩 Отправить в топик: \n{SERVER_URL}/post/{encoded_topic}\n"
-                f"✏️ Редактировать сообщение: \n{SERVER_URL}/edit/{encoded_chat}/<message_id>\n"
-                f"📄 Получить текст сообщения: \n{SERVER_URL}/get/{encoded_chat}/<message_id>\n"
-            )
-            logger.info(f"📢 Пользователь {username} запросил ссылки для топика {thread_id} в чате {chat_id}")
-        else:
-            await update.message.reply_text(
-                f"📩 Отправить в общий чат: \n{SERVER_URL}/post/{encoded_general}\n"
-                f"✏️ Редактировать: \n{SERVER_URL}/edit/{encoded_chat}/<message_id>\n"
-                f"🗑 Удалить сообщение: \n{SERVER_URL}/delete/{encoded_chat}/<message_id>\n"
-                f"📄 Получить текст сообщения: \n{SERVER_URL}/get/{encoded_chat}/<message_id>\n"
-            )
-            logger.info(f"📢 Пользователь {username} запросил ссылки для General-чата {chat_id}")
-    except Exception as e:
-        log_and_notify(logging.ERROR, f"❌ Ошибка в сommands: {str(e)}", chat_id, thread_id)
+    if encoded_topic:
+        await update.message.reply_text(
+            f"📩 Отправить в топик: \n{SERVER_URL}/post/{encoded_topic}\n"
+            f"✏️ Редактировать сообщение: \n{SERVER_URL}/edit/{encoded_chat}/<message_id>\n"
+            f"📄 Получить текст сообщения: \n{SERVER_URL}/get/{encoded_chat}/<message_id>\n"
+        )
+        logger.info(f"📢 Пользователь {username} запросил ссылки для топика {thread_id} в чате {chat_id}")
+    else:
+        await update.message.reply_text(
+            f"📩 Отправить в общий чат: \n{SERVER_URL}/post/{encoded_general}\n"
+            f"✏️ Редактировать: \n{SERVER_URL}/edit/{encoded_chat}/<message_id>\n"
+            f"🗑 Удалить сообщение: \n{SERVER_URL}/delete/{encoded_chat}/<message_id>\n"
+            f"📄 Получить текст сообщения: \n{SERVER_URL}/get/{encoded_chat}/<message_id>\n"
+        )
+        logger.info(f"📢 Пользователь {username} запросил ссылки для General-чата {chat_id}")
 
 async def logging_commands(update, context: ContextTypes.DEFAULT_TYPE):
     """
