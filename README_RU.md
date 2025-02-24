@@ -6,6 +6,11 @@
 - [Использованные библиотеки](#c-использованные-библиотеки)
 - [Создание бота в BotFather](#d-создание-бота-в-botfather)
 - [Развертывание на RailwayApp](#e-развертывание-на-railwayapp)
+- Дополнительно: [Readme на английском языке](https://github.com/dkob1996/flask_telegram_bot/blob/main/README.md)
+
+
+![Project logo](https://github.com/dkob1996/flask_telegram_bot/blob/main/images/logo.png)
+
 
 ## A. Описание проекта
 

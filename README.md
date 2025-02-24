@@ -8,6 +8,9 @@
 - [Deployment on RailwayApp](#e-deployment-on-railwayapp)
 - Extra: [Readme on Russian language](https://github.com/dkob1996/flask_telegram_bot/blob/main/README_RU.md)
 
+![Project logo](https://github.com/dkob1996/flask_telegram_bot/blob/main/images/logo.png)
+
+
 ## A. Project Description
 
 This bot is designed to work with messages in Telegram and also for logging errors and warnings.<br> 
