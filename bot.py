@@ -374,6 +374,9 @@ def delete_message(encoded_params, message_id):
         if "message to delete not found" in error_message:
             log_and_notify(logging.WARNING, f"⚠️ Сообщение {message_id} уже удалено или не найдено в чате {chat_id}.", chat_id, None)
             return jsonify({"warning": f"Message {message_id} already deleted or not found"}), 200
+        elif "Message can't be deleted" in error_message:
+            log_and_notify(logging.ERROR, f"⚠️ Сообщение {message_id} не может быть удалено в чате {chat_id}.\nБыло опубликовано более 48 часов назад.\nУдалите вручную!", chat_id, None)
+            return jsonify({"error": f"Message {message_id} can't be deleted"}), 200
         else:
             log_and_notify(logging.ERROR, f"❌ Ошибка при удалении сообщения {message_id} в чате {chat_id}: {error_message}", chat_id, None)
             return jsonify({"error": error_message}), 500
